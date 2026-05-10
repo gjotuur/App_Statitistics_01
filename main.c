@@ -6,6 +6,7 @@
 #include <openssl/rand.h>
 #include <string.h>
 #include <stdbool.h>
+#include <stdarg.h>
 #define PI 3.14159265358979323946
 
 /*To compile: gcc main.c -o tst1.exe -IC:/msys64/mingw64/include -LC:/msys64/mingw64/lib -lcrypto -lssl*/
@@ -19,6 +20,7 @@ typedef struct{
 
 //Block of funcs used to work with samples
 void Init_Sample(stat_sample_t* s, uint64_t size);                                  //Sample struct initialization with size, use malloc before calling
+void Clear_Samples(stat_sample_t* first, ...);                                      //Clear all the samples used, list always must end with NULL-terminator
 stat_sample_t* Copy_Sample(stat_sample_t* s1);                                      //Copying samples, memory allocation integrated, return stat_sample_t* value, example of use: stat_sample_t* s2 = Copy_Sample(s1);
 void Fill_Sample_with_random(stat_sample_t* s);                                     //Filling the sample with pseudo-random numbers from [0;1] interval
 void Normalize_Sample(stat_sample_t* s);                                            //Setting sample elements to fit with normal distribution N(0,1)
@@ -30,22 +32,22 @@ void Sample_Analyze(stat_sample_t* s, double* mean, double* var,                
 
 int main(){
     stat_sample_t* sample1 = malloc(sizeof(stat_sample_t));
-    Init_Sample(sample1, (uint64_t)10000);
+    Init_Sample(sample1, (uint64_t)10000000);
     Fill_Sample_with_random(sample1);
 
-    for(uint64_t i = 0; i < sample1->size; i++){
-        printf("omega_%d = %.2lf, ", i+1, sample1->samples[i]);
-        ((i+1)%10 == 0) ? printf("\n") : 0;
-    }
+    //for(uint64_t i = 0; i < sample1->size; i++){
+    //    printf("omega_%d = %.2lf, ", i+1, sample1->samples[i]);
+    //    ((i+1)%10 == 0) ? printf("\n") : 0;
+    //}
 
     stat_sample_t * sample2 = Copy_Sample(sample1);
 
     Normalize_Sample(sample2);
 
-    for(uint64_t i = 0; i < sample2->size; i++){
-        printf("ksi_%d = %.2lf, ", i + 1, sample2->samples[i]);
-        ((i+1)%10 == 0) ? printf("\n") : 0;
-    }
+    //for(uint64_t i = 0; i < sample2->size; i++){
+    //    printf("ksi_%d = %.2lf, ", i + 1, sample2->samples[i]);
+    //    ((i+1)%10 == 0) ? printf("\n") : 0;
+    //}
 
     double mean = Sample_Mean(sample1);
     double var = Sample_Variance(sample1, true);
@@ -55,6 +57,8 @@ int main(){
 
     printf("\nResults of single functions:\nMean = %.2lf   Variance = %.2lf    St_Dev = %.2lf", mean, var, sqrt(var));
     printf("\nResults of multi function:\nMean = %.2lf   Variance = %.2lf    St_Dev = %.2lf", mean_p, var_p, st_dev_p);
+
+    Clear_Samples(sample1, sample2, NULL);
 
     return 0;
 }
@@ -176,3 +180,28 @@ void Sample_Analyze(stat_sample_t* s, double* mean, double* var, bool bias, doub
     *var = s_var;
     *st_dev = s_st_dev;
 }
+
+void Clear_Samples(stat_sample_t* first, ...){
+    if(first == NULL) return;
+
+    va_list args;
+    va_start(args, first);
+
+    stat_sample_t* stream = first;
+
+    while(stream != NULL){
+        if(stream->samples != NULL){
+            free(stream->samples);
+            stream->samples = NULL;
+        }
+        free(stream);
+
+        stream = va_arg(args, stat_sample_t*);
+    }
+
+    va_end(args);
+}
+
+
+
+//NULL
