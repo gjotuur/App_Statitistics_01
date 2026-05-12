@@ -11,6 +11,20 @@
 
 /*To compile: gcc main.c -o tst1.exe -IC:/msys64/mingw64/include -LC:/msys64/mingw64/lib -lcrypto -lssl*/
 
+//type to store lookup tables for distributions
+typedef struct{
+    double alpha;
+    uint64_t n;
+    double value;
+}Distribution_t;
+
+//Struct to store names of used distributions
+typedef enum {
+    Student = 0,
+    Normal = 1,
+    Khi_low = 2,
+    Khi_high = 3
+}Distribution_name_t;
 
 //Basic struct for samples (w/o mean and dispersion)
 typedef struct{
@@ -28,11 +42,12 @@ double Sample_Mean(stat_sample_t* s);                                           
 double Sample_Variance(stat_sample_t* s, bool bias);                                //Sample variance evaluation, 2nd param set 1 for unbiased and 0 for biased
 void Sample_Analyze(stat_sample_t* s, double* mean, double* var,                    //Single function to evaluate all at once, params is pointers to store values
                     bool bias, double* st_dev);
+double Distribution_Value(uint64_t n, double gamma, Distribution_name_t d);           //Single function to find value of a distribution with a given parameters of gamma and n, uses lookup tables
 
 
 int main(){
     stat_sample_t* sample1 = malloc(sizeof(stat_sample_t));
-    Init_Sample(sample1, (uint64_t)10000000);
+    Init_Sample(sample1, (uint64_t)100000);
     Fill_Sample_with_random(sample1);
 
     //for(uint64_t i = 0; i < sample1->size; i++){
@@ -53,12 +68,15 @@ int main(){
     double var = Sample_Variance(sample1, true);
 
     double mean_p, var_p, st_dev_p;
-    Sample_Analyze(sample1, &mean_p, &var_p, true, &st_dev_p);
+    Sample_Analyze(sample2, &mean_p, &var_p, true, &st_dev_p);
 
-    printf("\nResults of single functions:\nMean = %.2lf   Variance = %.2lf    St_Dev = %.2lf", mean, var, sqrt(var));
-    printf("\nResults of multi function:\nMean = %.2lf   Variance = %.2lf    St_Dev = %.2lf", mean_p, var_p, st_dev_p);
+    printf("\nResults of single functions:\nMean = %.6lf   Variance = %.6lf    St_Dev = %.6lf", mean, var, sqrt(var));
+    printf("\nResults of multi function:\nMean = %.6lf   Variance = %.6lf    St_Dev = %.6lf", mean_p, var_p, st_dev_p);
 
     Clear_Samples(sample1, sample2, NULL);
+
+    double khe = Distribution_Value((uint64_t)1000, 0.01, Khi_low);
+    printf("\nValue of distribution with gamma = 0.01 and n = 1000 is %.2lf\n", khe);
 
     return 0;
 }
@@ -200,6 +218,71 @@ void Clear_Samples(stat_sample_t* first, ...){
     }
 
     va_end(args);
+}
+
+double Distribution_Value(uint64_t n, double gamma, Distribution_name_t d){
+
+    double alpha = gamma;
+    if(d == Normal){
+        if(alpha == 0.05) return 1.9600;
+        if(alpha == 0.01) return 2.5758;
+        if(alpha == 0.001) return 3.2905;
+        if(alpha == 0.1) return 1.6449;
+        return 1.9600;
+    }
+
+    static const Distribution_t Student_tab[] = {
+        /*n == 10*/     {0.1,      10, 1.833}, {0.05,      10, 2.262}, {0.01,      10, 3.250}, {0.001,      10, 4.781},
+        /*n == 100*/    {0.1,     100, 1.660}, {0.05,     100, 1.984}, {0.01,     100, 2.626}, {0.001,     100, 3.390},
+        /*n == 1000*/   {0.1,    1000, 1.646}, {0.05,    1000, 1.962}, {0.01,    1000, 2.581}, {0.001,    1000, 3.300},
+        /*n == 10000*/  {0.1,   10000, 1.645}, {0.05,   10000, 1.960}, {0.01,   10000, 2.576}, {0.001,   10000, 3.291},
+        /*n == 100000*/ {0.1,  100000, 1.645}, {0.05,  100000, 1.960}, {0.01,  100000, 2.576}, {0.001,  100000, 3.291},
+        /*n == 1000000*/{0.1, 1000000, 1.645}, {0.05, 1000000, 1.960}, {0.01, 1000000, 2.576}, {0.001, 1000000, 3.291}
+    };
+
+    static const Distribution_t Khi_low_tab[] = {
+        /* n == 10 */     {0.1,      10, 3.325}, {0.05,     10, 2.700}, {0.01,     10, 1.735}, {0.001,      10, 0.959},
+        /* n == 100 */    {0.1,     100, 77.05}, {0.05,     100, 73.36}, {0.01,     100, 66.51}, {0.001,      100, 59.20},
+        /* n == 1000 */   {0.1,    1000, 925.2}, {0.05,     1000, 913.3}, {0.01,     1000, 890.5}, {0.001,      1000, 864.9},
+        /* n > 1000 Fisher approximation*/
+        /* n == 10000*/  {0.1,    10000, 9768},  {0.05,  10000, 9724}, {0.01, 10000, 9639},    {0.001, 10000, 9540},
+        /* n == 100000*/ {0.1,   100000, 99265},{0.05, 100000, 99125},  {0.01, 100000, 98858},  {0.001, 100000, 98544},
+        /*n == 1000000*/ {0.1, 1000000, 997673}, {0.05, 1000000, 997229}, {0.01, 1000000, 996387}, {0.001, 1000000, 995394}
+    };
+
+    static const Distribution_t Khi_high_tab[] = {
+        /* n == 10 */   {0.1, 10, 16.92},   {0.05, 10, 19.02},   {0.01, 10, 23.59},   {0.001, 10, 29.67},
+        /* n == 100 */  {0.1, 100, 123.2},  {0.05, 100, 128.4},  {0.01, 100, 139.0},  {0.001, 100, 151.0},
+        /* n == 1000 */ {0.1, 1000, 1076},  {0.05, 1000, 1089},  {0.01, 1000, 1113},  {0.001, 1000, 1142},
+        /* n > 1000 */
+        /* n == 10000*/{0.1, 10000, 10234},   {0.05, 10000, 10280},   {0.01, 10000, 10368},   {0.001, 10000, 10472},
+        /* n == 100000*/{0.1, 100000, 100737}, {0.05, 100000, 100880}, {0.01, 100000, 101153}, {0.001, 100000, 101476},
+        /* n == 1000000*/{0.1, 1000000, 1002330}, {0.05, 1000000, 1002778}, {0.01, 1000000, 1003635}, {0.001, 1000000, 1004655}
+    };
+
+    const Distribution_t* Chosen_distribution = NULL;
+    size_t s = 0;
+    switch(d){
+        case Student: 
+            Chosen_distribution = Student_tab; 
+            s = *(&Student_tab + 1) - Student_tab;
+            break;
+        case Khi_low: 
+            Chosen_distribution = Khi_low_tab; 
+            s = *(&Khi_low_tab + 1) - Khi_low_tab;
+            break;
+        case Khi_high: 
+            Chosen_distribution = Khi_high_tab; 
+            s = *(&Khi_high_tab + 1) - Khi_high_tab;
+            break;
+        default:
+        return 0.0;
+    }
+
+    //XLOOKUP Pro Max
+    for(size_t i = 0; i < s; i++){
+        if(Chosen_distribution[i].n == n && fabs(Chosen_distribution[i].alpha - alpha) < 1e-6) return Chosen_distribution[i].value;
+    }
 }
 
 
