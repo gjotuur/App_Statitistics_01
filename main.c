@@ -42,12 +42,16 @@ double Sample_Mean(stat_sample_t* s);                                           
 double Sample_Variance(stat_sample_t* s, bool bias);                                //Sample variance evaluation, 2nd param set 1 for unbiased and 0 for biased
 void Sample_Analyze(stat_sample_t* s, double* mean, double* var,                    //Single function to evaluate all at once, params is pointers to store values
                     bool bias, double* st_dev);
-double Distribution_Value(uint64_t n, double gamma, Distribution_name_t d);           //Single function to find value of a distribution with a given parameters of gamma and n, uses lookup tables
+double Distribution_Value(uint64_t n, double gamma, Distribution_name_t d);         //Single function to find value of a distribution with a given parameters of gamma and n, uses lookup tables, input for distribution name may be {Normal; Student; Khi_...}
+void Confidence_Interval_Var1(stat_sample_t* sample, double gamma,                  //Confidence interval for mean when variance is unknown and distribution is N(0,1)
+                                double* lower_limit, double *upper_limit);
+void Confidence_Interval_Var2(stat_sample_t* sample, double gamma,                  //Confidence interval for variance for sample with distribution type of N(0,1)
+                                double* lower_limit, double* upper_limit);
 
 
 int main(){
     stat_sample_t* sample1 = malloc(sizeof(stat_sample_t));
-    Init_Sample(sample1, (uint64_t)100000);
+    Init_Sample(sample1, (uint64_t)1000000);
     Fill_Sample_with_random(sample1);
 
     //for(uint64_t i = 0; i < sample1->size; i++){
@@ -73,10 +77,20 @@ int main(){
     printf("\nResults of single functions:\nMean = %.6lf   Variance = %.6lf    St_Dev = %.6lf", mean, var, sqrt(var));
     printf("\nResults of multi function:\nMean = %.6lf   Variance = %.6lf    St_Dev = %.6lf", mean_p, var_p, st_dev_p);
 
-    Clear_Samples(sample1, sample2, NULL);
-
     double khe = Distribution_Value((uint64_t)1000, 0.01, Khi_low);
     printf("\nValue of distribution with gamma = 0.01 and n = 1000 is %.2lf\n", khe);
+
+    double l1, l2;
+    double g = 0.01;
+    Confidence_Interval_Var1(sample2, g, &l1, &l2);
+
+    printf("\nConfidence interval (case1) is [%.4lf;%.4lf]", l1, l2);
+
+    Confidence_Interval_Var2(sample2, g, &l1, &l2);
+
+    printf("\nConfidence interval (case2) is [%.4lf;%.4lf]", l1, l2);    
+
+    Clear_Samples(sample1, sample2, NULL);
 
     return 0;
 }
@@ -285,6 +299,25 @@ double Distribution_Value(uint64_t n, double gamma, Distribution_name_t d){
     }
 }
 
+void Confidence_Interval_Var1(stat_sample_t* sample, double gamma, double* lower_limit, double *upper_limit){
+    double mean = Sample_Mean(sample);
+    double dev = sqrt(Sample_Variance(sample, 1));                          //bool Param = TRUE - we use unbiased variance
 
+    double q1 = Distribution_Value(sample->size, gamma, Student);
+
+    double q2 = (q1/(sqrt(sample->size - 1)))*dev;
+    *lower_limit = mean - q2;
+    *upper_limit = mean + q2;
+}
+
+void Confidence_Interval_Var2(stat_sample_t* sample, double gamma, double* lower_limit, double* upper_limit){
+    double var = Sample_Variance(sample, true);
+
+    double z1 = Distribution_Value(sample->size, gamma, Khi_low);
+    double z2 = Distribution_Value(sample->size, gamma, Khi_high);
+
+    *lower_limit = (((double)sample->size * var) / z2);
+    *upper_limit = (((double)sample->size * var) / z1);
+}
 
 //NULL
