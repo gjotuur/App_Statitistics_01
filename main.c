@@ -32,6 +32,8 @@ typedef struct{
     double* samples;
 }stat_sample_t;
 
+
+
 //Block of funcs used to work with samples
 void Init_Sample(stat_sample_t* s, uint64_t size);                                  //Sample struct initialization with size, use malloc before calling
 void Clear_Samples(stat_sample_t* first, ...);                                      //Clear all the samples used, list always must end with NULL-terminator
@@ -47,50 +49,76 @@ void Confidence_Interval_Var1(stat_sample_t* sample, double gamma,              
                                 double* lower_limit, double *upper_limit);
 void Confidence_Interval_Var2(stat_sample_t* sample, double gamma,                  //Confidence interval for variance for sample with distribution type of N(0,1)
                                 double* lower_limit, double* upper_limit);
+void Confidence_Interval_Var3(stat_sample_t* sample, double gamma,                  //Confidence interval in case if the distribution is unknown
+                                double* lower_limit, double* upper_limit);
 
 
 int main(){
-    stat_sample_t* sample1 = malloc(sizeof(stat_sample_t));
-    Init_Sample(sample1, (uint64_t)1000000);
-    Fill_Sample_with_random(sample1);
 
-    //for(uint64_t i = 0; i < sample1->size; i++){
-    //    printf("omega_%d = %.2lf, ", i+1, sample1->samples[i]);
-    //    ((i+1)%10 == 0) ? printf("\n") : 0;
-    //}
+    uint64_t sample_sizes[] = {10, 100, 1000, 10000, 100000, 1000000};
+    int sample_quantity = 6;
 
-    stat_sample_t * sample2 = Copy_Sample(sample1);
+    typedef struct{
+        double upper_limit;
+        double lower_limit;
+    }Confidence_Interval;
 
-    Normalize_Sample(sample2);
+    //Utility structure to store results
+    typedef struct{
+        uint64_t size;
+        Confidence_Interval method1;
+        Confidence_Interval method2;
+        Confidence_Interval method3;
+        double mean;
+        double var;
+        double st_dev;  
+    }Sample_Test_Result;
 
-    //for(uint64_t i = 0; i < sample2->size; i++){
-    //    printf("ksi_%d = %.2lf, ", i + 1, sample2->samples[i]);
-    //    ((i+1)%10 == 0) ? printf("\n") : 0;
-    //}
+    Sample_Test_Result* Sample_Results = calloc(sample_quantity, sizeof(Sample_Test_Result));
 
-    double mean = Sample_Mean(sample1);
-    double var = Sample_Variance(sample1, true);
+    printf("Task #1: Confidence intervals");
 
-    double mean_p, var_p, st_dev_p;
-    Sample_Analyze(sample2, &mean_p, &var_p, true, &st_dev_p);
+    double gamma = 0.01;
 
-    printf("\nResults of single functions:\nMean = %.6lf   Variance = %.6lf    St_Dev = %.6lf", mean, var, sqrt(var));
-    printf("\nResults of multi function:\nMean = %.6lf   Variance = %.6lf    St_Dev = %.6lf", mean_p, var_p, st_dev_p);
+    for(int i = 0; i < sample_quantity; i++){
+        stat_sample_t* sample = malloc(sizeof(stat_sample_t));
+        Init_Sample(sample, sample_sizes[i]);
 
-    double khe = Distribution_Value((uint64_t)1000, 0.01, Khi_low);
-    printf("\nValue of distribution with gamma = 0.01 and n = 1000 is %.2lf\n", khe);
+        Fill_Sample_with_random(sample);
+        Normalize_Sample(sample);
 
-    double l1, l2;
-    double g = 0.01;
-    Confidence_Interval_Var1(sample2, g, &l1, &l2);
+        printf("Test %d, sample size n = %7llu, gamma = 0.01", i, sample->size);
 
-    printf("\nConfidence interval (case1) is [%.4lf;%.4lf]", l1, l2);
+        Sample_Results[i].size = sample_sizes[i];
+        
+        Sample_Analyze(sample, &Sample_Results[i].mean, &Sample_Results[i].var, true, &Sample_Results[i].st_dev);
 
-    Confidence_Interval_Var2(sample2, g, &l1, &l2);
+        Confidence_Interval_Var1(sample, gamma, &Sample_Results[i].method1.lower_limit, &Sample_Results[i].method1.upper_limit);
+        Confidence_Interval_Var3(sample, gamma, &Sample_Results[i].method2.lower_limit, &Sample_Results[i].method2.upper_limit);
+        Confidence_Interval_Var2(sample, gamma, &Sample_Results[i].method3.lower_limit, &Sample_Results[i].method3.upper_limit);
 
-    printf("\nConfidence interval (case2) is [%.4lf;%.4lf]", l1, l2);    
+        printf(" ......done\n");
 
-    Clear_Samples(sample1, sample2, NULL);
+        Clear_Samples(sample, NULL);
+    }
+
+
+    printf("\nResults are");
+    for(int i = 0; i < sample_quantity; i++){
+        printf("\nSample %2d: size = %7d, interval M1 [%.6lf, %.6lf], interval M2 [%.6lf, %.6lf], Interval M3 [%.6lf, %.6lf]", 
+            i, Sample_Results[i].size, Sample_Results[i].method1.lower_limit, Sample_Results[i].method1.upper_limit,
+            Sample_Results[i].method2.lower_limit, Sample_Results[i].method2.upper_limit,
+            Sample_Results[i].method3.lower_limit, Sample_Results[i].method3.upper_limit);
+
+        printf("\nReal mean = %.6lf, real variance = %.6lf, ranges is [%.6lf, %.6lf, %.6lf]", Sample_Results[i].mean, Sample_Results[i].var,
+        (-1)*Sample_Results[i].method1.lower_limit + Sample_Results[i].method1.upper_limit,
+        (-1)*Sample_Results[i].method2.lower_limit + Sample_Results[i].method2.upper_limit,
+        (-1)*Sample_Results[i].method3.lower_limit + Sample_Results[i].method3.upper_limit);
+    }
+
+
+
+    //Clear_Samples(sample1, sample2, NULL);
 
     return 0;
 }
@@ -318,6 +346,17 @@ void Confidence_Interval_Var2(stat_sample_t* sample, double gamma, double* lower
 
     *lower_limit = (((double)sample->size * var) / z2);
     *upper_limit = (((double)sample->size * var) / z1);
+}
+
+void Confidence_Interval_Var3(stat_sample_t* sample, double gamma, double* lower_limit, double* upper_limit){
+    
+    double z1 = Distribution_Value(sample->size, gamma, Normal);
+
+    double mean, variance, st_dev;
+    Sample_Analyze(sample, &mean, &variance, true, &st_dev);
+
+    *lower_limit = mean - ((z1 * st_dev) / sqrt(sample->size));
+    *upper_limit = mean + ((z1 * st_dev) / sqrt(sample->size));
 }
 
 //NULL
