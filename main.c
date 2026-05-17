@@ -26,6 +26,12 @@ typedef enum {
     Khi_high = 3
 }Distribution_name_t;
 
+typedef enum{
+    Weibull_Ksi = 0,
+    Weibull_EtaA = 1,
+    Weibull_EtaB = 2
+} Weibull_Type_t;
+
 //Basic struct for samples (w/o mean and dispersion)
 typedef struct{
     uint64_t size;
@@ -51,11 +57,14 @@ void Confidence_Interval_Var2(stat_sample_t* sample, double gamma,              
                                 double* lower_limit, double* upper_limit);
 void Confidence_Interval_Var3(stat_sample_t* sample, double gamma,                  //Confidence interval in case if the distribution is unknown
                                 double* lower_limit, double* upper_limit);
+void Set_Sample_To_Weibull(stat_sample_t* s, Weibull_Type_t type);
+double Set_Number_To_Weibull(double n, Weibull_Type_t type);
+
 
 
 int main(){
 
-    uint64_t sample_sizes[] = {10, 100, 1000, 10000, 100000, 1000000};
+    /*uint64_t sample_sizes[] = {10, 100, 1000, 10000, 100000, 1000000};
     int sample_quantity = 6;
 
     typedef struct{
@@ -114,11 +123,26 @@ int main(){
         (-1)*Sample_Results[i].method1.lower_limit + Sample_Results[i].method1.upper_limit,
         (-1)*Sample_Results[i].method2.lower_limit + Sample_Results[i].method2.upper_limit,
         (-1)*Sample_Results[i].method3.lower_limit + Sample_Results[i].method3.upper_limit);
+    }*/
+
+    stat_sample_t* sample1 = malloc(sizeof(stat_sample_t));
+
+    Init_Sample(sample1,100);
+    Fill_Sample_with_random(sample1);
+
+    stat_sample_t* sample2 = Copy_Sample(sample1);
+    Set_Sample_To_Weibull(sample2, Weibull_EtaB);
+
+    for(uint64_t i = 0; i < sample1->size; i++){
+        printf("   s1[%3llu] = %2.6lf | s2[%3llu] = %2.6lf", i+1, sample1->samples[i], i+1, sample2->samples[i]);
+        //double s_i = sample1->samples[i];
+        //double s_2i = Set_Number_To_Weibull(s_i, Weibull_Ksi);
+        //printf("    s1[%3llu] = %2.6lf | s2[%3llu] = %2.6lf", i+1, s_i, i+1, s_2i);
+        (i+1) % 5 == 0 ? printf("\n") : 0;
     }
 
 
-
-    //Clear_Samples(sample1, sample2, NULL);
+    Clear_Samples(sample1, sample2, NULL);
 
     return 0;
 }
@@ -184,6 +208,41 @@ void Normalize_Sample(stat_sample_t* s){
             s->samples[i] = ksi_1;
         }
     }
+}
+
+void Set_Sample_To_Weibull(stat_sample_t* s, Weibull_Type_t type){
+
+    if(s == NULL || s->size == 0) return;
+
+    double omega;
+    switch(type){
+        case Weibull_Ksi:
+            for(uint64_t i = 0; i < s->size; i++){
+                omega = sqrt(-log((s->samples[i] > 0 ? s->samples[i] : 1e-15)));
+                s->samples[i] = omega;
+            }
+            break;
+        case Weibull_EtaA:
+            for(uint64_t i = 0; i < s->size; i++){
+                omega = (double)1 / sqrt((s->samples[i] > 0 ? s->samples[i] : 1e-15)) - 1;
+                s->samples[i] = omega;
+            }
+            break;
+        case Weibull_EtaB:
+            for(uint64_t i = 0; i < s->size; i++){
+                omega = -log(s->samples[i] > 0 ? s->samples[i] : 1e-15);
+                s->samples[i] = omega;
+            }
+    }
+}
+
+double Set_Number_To_Weibull(double n, Weibull_Type_t type){
+    double converted;
+    if(type == Weibull_Ksi) converted = sqrt(-log((n > 0 ? n : 1e-15)));
+    if(type == Weibull_EtaA) converted = (double)1 / sqrt((n > 0 ? n : 1e-15)) - 1;
+    if(type == Weibull_EtaB) converted = -log(n > 0 ? n : 1e-15);
+
+    return converted;
 }
 
 double Sample_Mean(stat_sample_t* s){
@@ -357,6 +416,10 @@ void Confidence_Interval_Var3(stat_sample_t* sample, double gamma, double* lower
 
     *lower_limit = mean - ((z1 * st_dev) / sqrt(sample->size));
     *upper_limit = mean + ((z1 * st_dev) / sqrt(sample->size));
+}
+
+void Monte_Carlo_Convergence_Test(){
+    
 }
 
 //NULL
