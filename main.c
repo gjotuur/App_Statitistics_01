@@ -91,6 +91,7 @@ void Set_Sample_To_Weibull(stat_sample_t* s, Weibull_Type_t type);              
 //Convergence test
 convergence_result_t Convergence_Test_V1(uint64_t sample_size, Weibull_Type_t variation);               //Monte-Carlo method
 convergence_result_t Convergence_Test_V2(uint64_t sample_size, Weibull_Type_t variation);               //Conditional mean method
+convergence_result_t Convergence_Test_V3(uint64_t sample_size, Weibull_Type_t variation);               //Third method
 
 
 
@@ -161,8 +162,8 @@ int main(){
 
     Clear_Samples(sample1, sample2, NULL);
 
-    convergence_result_t try_1 = Convergence_Test_V1(200, Weibull_EtaA);
-    printf("\nResults are \nN = %llu\nVariance = %.4lf\nQ = %lf\nInterval [%.4lf,%.4lf], range is %.4lf", try_1.final_N, try_1.variance, try_1.Q, try_1.cnf.lower_limit, try_1.cnf.upper_limit, try_1.cnf.upper_limit - try_1.cnf.lower_limit);
+    convergence_result_t try_1 = Convergence_Test_V3(100, Weibull_EtaA);
+    printf("\nResults are \nN = %llu\nVariance = %e\nQ = %e\nInterval [%e,%e], range is %e", try_1.final_N, try_1.variance, try_1.Q, try_1.cnf.lower_limit, try_1.cnf.upper_limit, try_1.cnf.upper_limit - try_1.cnf.lower_limit);
 
     return 0;
 }
@@ -412,7 +413,7 @@ void Confidence_Interval_Var1(stat_sample_t* sample, double gamma, double* lower
 
     double q1 = Distribution_Value(sample->size, gamma, Student);
 
-    double q2 = (q1/(sqrt(sample->size - 1)))*dev;
+    double q2 = (q1/(sqrt(sample->size)))*dev;
     *lower_limit = mean - q2;
     *upper_limit = mean + q2;
 }
@@ -447,7 +448,7 @@ convergence_result_t Convergence_Test_V1(uint64_t sample_size, Weibull_Type_t va
     uint64_t counter = 0;
     double s_q = 0;
     double s_q_sq = 0;
-    double q_est, var;
+    double q_est = 0, var = 0;
     double n_star = UINT64_MAX;
 
     while(true){
@@ -473,6 +474,7 @@ convergence_result_t Convergence_Test_V1(uint64_t sample_size, Weibull_Type_t va
         if (counter > n_star) break;
         if (counter >= max_i_mc){
             printf("\nMonte Carlo method reached limit of iterations, params n = %d, gamma = %.2lf, execution stoped, results saved", sample_size, epsilon);
+            break;
         }
     }
     convergence_result_t res;
@@ -484,6 +486,153 @@ convergence_result_t Convergence_Test_V1(uint64_t sample_size, Weibull_Type_t va
     res.cnf.upper_limit = q_est + delta;
 
     return  res;
+}
+
+
+convergence_result_t Convergence_Test_V2(uint64_t sample_size, Weibull_Type_t variation){
+    uint64_t max_i_m2 = 1000000; 
+    double z_gamma = 2.575;
+    double epsilon = 0.01;
+    uint64_t stabilization_n = 10000;
+    uint64_t counter = 0;
+    double s_q = 0;
+    double s_q_sq = 0;
+    double q_est = 0, var = 0;
+    double n_star = UINT64_MAX;
+
+    while(true){
+        counter += 1;
+        double sum_ksi = 0;
+
+        for(int i = 0; i < sample_size; i++){
+            double ksi_i = Set_Number_To_Weibull(get_rand_01(), Weibull_Ksi);
+            sum_ksi += ksi_i;
+        }
+
+        double q_i = 0;
+        if(variation == Weibull_EtaA){
+            q_i = (double)1 / ((1.0 + sum_ksi) * (1.0 + sum_ksi));
+        } else if(variation == Weibull_EtaB){
+            q_i = exp(-sum_ksi);
+        }
+
+        s_q += q_i;
+        s_q_sq += q_i * q_i;
+
+        if(counter >= stabilization_n){
+            q_est = s_q / (double)counter;
+            
+            //
+            var = ((double)1 / (counter - 1)) * (s_q_sq - counter * q_est * q_est);
+            if (var < 0.0) var = 0.0; 
+            
+            if(q_est > 0) {
+                n_star = (z_gamma * z_gamma * var) / (epsilon * epsilon * q_est * q_est);
+            } else {
+                break;
+            }
+        }
+
+        if(counter > n_star) {
+            // Щоб ти не думав, що це баг, виводимо реальний n_star для малих n
+            printf("\nActual n_star is %.0lf", n_star);
+            break;
+        }
+        
+        if(counter >= max_i_m2) break; 
+    }
+    
+    // Фінальний перерахунок
+    q_est = s_q / (double)counter;
+    var = ((double)1 / (counter - 1)) * (s_q_sq - counter * q_est * q_est);
+    if (var < 0.0) var = 0.0;
+
+    convergence_result_t res;
+    res.final_N = counter;
+    res.variance = var;
+    res.Q = q_est;
+    
+    double delta = (var > 0) ? (z_gamma * sqrt(var) / sqrt((double)counter)) : 0.0;
+    res.cnf.lower_limit = q_est - delta;
+    res.cnf.upper_limit = q_est + delta;
+
+    if(res.cnf.lower_limit < (double)0){
+        res.cnf.lower_limit = (double)0;
+    }
+
+    return res;
+}
+
+
+convergence_result_t Convergence_Test_V3(uint64_t sample_size, Weibull_Type_t variation){
+    uint64_t max_i_m3 = 1000000; // Ліміт ітерацій
+    double z_gamma = 2.575;
+    double epsilon = 0.01;
+    uint64_t stabilization_n = 10000;
+    uint64_t counter = 0;
+
+    double q_est = 0.0;
+    double M2 = 0.0;
+    double var = 0.0;
+    double n_star = UINT64_MAX;
+
+    while(true){
+        counter += 1;
+        
+        double current_eta = Set_Number_To_Weibull(get_rand_01(), variation);
+        double T = current_eta;
+        double q_i = 1.0;
+
+        for(uint64_t i = 0; i < sample_size; i++){
+            if (T <= 1e-15) {
+                q_i = 0.0;
+                break;
+            }
+            
+            double gamma = 1.0 - exp(-T * T);
+            q_i *= gamma;
+            
+            double omega = get_rand_01();
+            double arg = 1.0 - omega * gamma;
+            
+            if (arg < 1e-16) arg = 1e-16;
+            if (arg > 1.0) arg = 1.0;
+            
+            double xi_star = sqrt(-log(arg));
+            
+            T -= xi_star;
+        }
+
+        double delta = q_i - q_est;
+        q_est += delta / (double)counter;
+        double delta2 = q_i - q_est;
+        M2 += delta * delta2;
+
+        if(counter >= stabilization_n){
+            var = M2 / (double)(counter - 1);
+            if (var < 0.0) var = 0.0;
+            
+            if (q_est > 1e-150) { 
+                n_star = (z_gamma * z_gamma * var) / (epsilon * epsilon * q_est * q_est);
+            } else {
+                n_star = UINT64_MAX; 
+            }
+        }
+
+        if (counter > n_star) break;
+        if (counter >= max_i_m3) break;
+    }
+
+    convergence_result_t res;
+    res.final_N = counter;
+    res.variance = var;
+    res.Q = q_est;
+    
+    double delta_val = (var > 0.0) ? (z_gamma * sqrt(var) / sqrt((double)counter)) : 0.0;
+    res.cnf.lower_limit = (q_est - delta_val < 0.0) ? 0.0 : (q_est - delta_val);
+    res.cnf.upper_limit = q_est + delta_val;
+
+    return res;
 }
 
 //NULL
