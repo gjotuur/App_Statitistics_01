@@ -38,6 +38,35 @@ typedef struct{
     double* samples;
 }stat_sample_t;
 
+//Confidence intervals always include 2 double values
+typedef struct{
+    double upper_limit;
+    double lower_limit;
+}Confidence_Interval;
+
+//Utility structure to store results
+typedef struct{
+    uint64_t size;
+    Confidence_Interval method1;
+    Confidence_Interval method2;
+    Confidence_Interval method3;
+    double mean;
+    double var;
+    double st_dev;  
+}Sample_Test_Result;
+
+//Utility structure to store results of part 2
+typedef struct{
+    uint64_t final_N;
+    double Q;
+    double variance;
+    Confidence_Interval cnf;
+}convergence_result_t;
+
+
+//Block of funcs used to work with numbers (generation, transformation)
+double get_rand_01();                                                               //Returns pseudo-random number, uses high-quality randomness from OpenSSL
+double Set_Number_To_Weibull(double n, Weibull_Type_t type);                        //Generate random [0,1] or use get_rand_01, function transform value to Weibull distribution
 
 
 //Block of funcs used to work with samples
@@ -57,8 +86,12 @@ void Confidence_Interval_Var2(stat_sample_t* sample, double gamma,              
                                 double* lower_limit, double* upper_limit);
 void Confidence_Interval_Var3(stat_sample_t* sample, double gamma,                  //Confidence interval in case if the distribution is unknown
                                 double* lower_limit, double* upper_limit);
-void Set_Sample_To_Weibull(stat_sample_t* s, Weibull_Type_t type);
-double Set_Number_To_Weibull(double n, Weibull_Type_t type);
+void Set_Sample_To_Weibull(stat_sample_t* s, Weibull_Type_t type);                  //To use first generate sample with random values on [0,1] interval, copy if needed, func will refill existing sample with Weibull distribution values
+
+//Convergence test
+convergence_result_t Convergence_Test_V1(uint64_t sample_size, Weibull_Type_t variation);               //Monte-Carlo method
+convergence_result_t Convergence_Test_V2(uint64_t sample_size, Weibull_Type_t variation);               //Conditional mean method
+
 
 
 
@@ -66,22 +99,6 @@ int main(){
 
     /*uint64_t sample_sizes[] = {10, 100, 1000, 10000, 100000, 1000000};
     int sample_quantity = 6;
-
-    typedef struct{
-        double upper_limit;
-        double lower_limit;
-    }Confidence_Interval;
-
-    //Utility structure to store results
-    typedef struct{
-        uint64_t size;
-        Confidence_Interval method1;
-        Confidence_Interval method2;
-        Confidence_Interval method3;
-        double mean;
-        double var;
-        double st_dev;  
-    }Sample_Test_Result;
 
     Sample_Test_Result* Sample_Results = calloc(sample_quantity, sizeof(Sample_Test_Result));
 
@@ -143,6 +160,9 @@ int main(){
 
 
     Clear_Samples(sample1, sample2, NULL);
+
+    convergence_result_t try_1 = Convergence_Test_V1(200, Weibull_EtaA);
+    printf("\nResults are \nN = %llu\nVariance = %.4lf\nQ = %lf\nInterval [%.4lf,%.4lf], range is %.4lf", try_1.final_N, try_1.variance, try_1.Q, try_1.cnf.lower_limit, try_1.cnf.upper_limit, try_1.cnf.upper_limit - try_1.cnf.lower_limit);
 
     return 0;
 }
@@ -418,8 +438,52 @@ void Confidence_Interval_Var3(stat_sample_t* sample, double gamma, double* lower
     *upper_limit = mean + ((z1 * st_dev) / sqrt(sample->size));
 }
 
-void Monte_Carlo_Convergence_Test(){
-    
+convergence_result_t Convergence_Test_V1(uint64_t sample_size, Weibull_Type_t variation){
+
+    uint64_t max_i_mc = 50000000;
+    double z_gamma = 2.575;
+    double epsilon = 0.01;
+    uint64_t stabilization_n = 10000;
+    uint64_t counter = 0;
+    double s_q = 0;
+    double s_q_sq = 0;
+    double q_est, var;
+    double n_star = UINT64_MAX;
+
+    while(true){
+        counter += 1;
+        double current_eta = Set_Number_To_Weibull(get_rand_01(), variation);
+        double sum_ksi = 0;
+
+        for(int i = 0; i < sample_size; i++){
+            double ksi_i = Set_Number_To_Weibull(get_rand_01(), Weibull_Ksi);
+            sum_ksi += ksi_i;
+        }
+
+        double q_i = (sum_ksi < current_eta) ? (double)1 : (double)0;
+        s_q += q_i;
+        s_q_sq += q_i*q_i;
+
+        if(counter >= 10000){
+            q_est = s_q / (double)counter;
+            var = ((double)1 / (counter - 1)) * (s_q_sq - counter * q_est * q_est);
+            if(q_est > 0) n_star = (z_gamma * z_gamma * var) / (epsilon * epsilon * q_est* q_est);
+        }
+
+        if (counter > n_star) break;
+        if (counter >= max_i_mc){
+            printf("\nMonte Carlo method reached limit of iterations, params n = %d, gamma = %.2lf, execution stoped, results saved", sample_size, epsilon);
+        }
+    }
+    convergence_result_t res;
+    res.final_N = counter;
+    res.variance = var;
+    res.Q = q_est;
+    double delta = z_gamma * sqrt(var) / sqrt((double)counter);
+    res.cnf.lower_limit = q_est - delta;
+    res.cnf.upper_limit = q_est + delta;
+
+    return  res;
 }
 
 //NULL
