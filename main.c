@@ -98,7 +98,7 @@ convergence_result_t Convergence_Test_V3(uint64_t sample_size, Weibull_Type_t va
 
 int main(){
 
-    /*uint64_t sample_sizes[] = {10, 100, 1000, 10000, 100000, 1000000};
+    uint64_t sample_sizes[] = {10, 100, 1000, 10000, 100000, 1000000};
     int sample_quantity = 6;
 
     Sample_Test_Result* Sample_Results = calloc(sample_quantity, sizeof(Sample_Test_Result));
@@ -141,7 +141,7 @@ int main(){
         (-1)*Sample_Results[i].method1.lower_limit + Sample_Results[i].method1.upper_limit,
         (-1)*Sample_Results[i].method2.lower_limit + Sample_Results[i].method2.upper_limit,
         (-1)*Sample_Results[i].method3.lower_limit + Sample_Results[i].method3.upper_limit);
-    }*/
+    }
 
     stat_sample_t* sample1 = malloc(sizeof(stat_sample_t));
 
